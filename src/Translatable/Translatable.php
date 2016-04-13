@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 trait Translatable
 {
+    
     /**
      * Alias for getTranslation()
      *
@@ -58,6 +59,10 @@ trait Translatable
         $locale = $locale ?: $this->locale();
         $withFallback = $withFallback === null ? $this->useFallback() : $withFallback;
         $fallbackLocale = $this->getFallbackLocale($locale);
+        
+        if($this->isJoinTranslated()){
+            return null;
+        }
 
         if ($translation = $this->getTranslationByLocaleKey($locale)) {
             return $translation;
@@ -159,7 +164,7 @@ trait Translatable
 
         if ($this->isTranslationAttribute($key)) {
             if ($this->getTranslation($locale) === null) {
-                return;
+                return parent::getAttribute($key);
             }
 
             return $this->getTranslation($locale)->$key;
@@ -608,5 +613,43 @@ trait Translatable
     {
         return App::make('config')->get('translatable.locale')
             ?: App::make('translator')->getLocale();
+    }
+
+    /**
+     * Inner join with the translation table
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param null $locale
+     * @return this
+     */
+    public static function scopeJoinTranslation(Builder $query, $locale = null)
+    {
+        // models
+        $instance = new static;
+
+        $translationModelName = $instance->getTranslationModelName();
+        $translationModel = new $translationModelName();
+
+        // locale
+        if (is_null($locale)) {
+            $locale = $instance->locale();
+        }
+
+        return $query->join($translationModel->getTable() . ' as t', 't.' . $instance->getRelationKey(), '=', $instance->getTable() . '.' . $instance->getKeyName())
+            ->where($instance->getLocaleKey(), $locale);
+    }
+    
+    /**
+     * Check if translation was with a inner join
+     *
+     * @return bool
+     */
+    protected function isJoinTranslated(){
+        foreach($this->translatedAttributes as $translatedAttribute){
+            if(isset($this->original[$translatedAttribute]) && !empty($this->original[$translatedAttribute])){
+                return true;
+            }
+        }
+        return false;
     }
 }
